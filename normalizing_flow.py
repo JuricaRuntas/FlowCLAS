@@ -109,7 +109,7 @@ class NormalizingFlow(Diffeomorphism):
         super(NormalizingFlow, self).__init__()
         self.num_features = num_features
         
-        self.flow_steps: List[Diffeomorphism] = []
+        self.flow_steps: List[Diffeomorphism] = nn.ModuleList()
         for i in range(num_steps):
             self.flow_steps.append(ActNorm(num_features))
             self.flow_steps.append(RandomChannelPermutation(num_features))
@@ -152,4 +152,4 @@ class NormalizingFlow(Diffeomorphism):
             return NPD_anomaly_score
         
         return torch.sum(log_pz, dim=(1, 2, 3)) + log_det_jacobian
-            
+    
