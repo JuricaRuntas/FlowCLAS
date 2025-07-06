@@ -103,11 +103,7 @@ class CityscapesWithCocoDataset(VisionDataset):
         mixed_image, mixed_target = self.create_mixed_image(cityscapes_image, cityscapes_target, coco_image, 
                                                             coco_target, ood_id=self.ood_id, id_id=self.id_id)
         
-        # save mixed image
-        mixed_image = Image.fromarray(mixed_image.astype(np.uint8))
-        mixed_image.save(f"mixed_image_{index}.png")
-        
-        return mixed_image, mixed_target        
+        return coco_image, mixed_image, mixed_target        
         
     def __len__(self):
         return len(self.cityscapes_dataset)
