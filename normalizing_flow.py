@@ -105,7 +105,7 @@ class AffineCouplingLayer(Diffeomorphism):
 
 
 class NormalizingFlow(Diffeomorphism):
-    def __init__(self, num_features, num_steps=16):
+    def __init__(self, num_features, num_steps=16, projection_head_dim=256):
         super(NormalizingFlow, self).__init__()
         self.num_features = num_features
         
@@ -115,7 +115,7 @@ class NormalizingFlow(Diffeomorphism):
             self.flow_steps.append(RandomChannelPermutation(num_features))
             self.flow_steps.append(AffineCouplingLayer(num_features, conv2d_kernel_size= 3 if i % 2 == 0 else 1))
                 
-        self.projection = nn.Conv2d(num_features, 256, kernel_size=1, bias=True)
+        self.projection = nn.Conv2d(num_features, projection_head_dim, kernel_size=1, bias=True)
 
     def forward(self, x, return_log_det_jacobian=False):
         z = x

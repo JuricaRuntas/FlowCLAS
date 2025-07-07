@@ -61,6 +61,18 @@ _C.BACKBONE.NORM_STD = [0.229, 0.224, 0.225]
 # ---------------------------------------------------------------------------- #
 
 
+# ---------------------------------------------------------------------------- #
+# Normalizing flow
+_C.NORMALIZING_FLOW = CN(new_allowed=True)
+_C.NORMALIZING_FLOW.NUM_STEPS = 16
+_C.NORMALIZING_FLOW.PROJECTION_HEAD_DIM = 256
+_C.NORMALIZING_FLOW.NUM_FEATURES = _C.BACKBONE.EMBED_DIM
+_C.NORMALIZING_FLOW.TEMPERATURE = 0.1
+_C.NORMALIZING_FLOW.NUM_EPOCHS = 600
+_C.NORMALIZING_FLOW.BATCH_SIZE = 32
+
+# ---------------------------------------------------------------------------- #
+
 
 def get_cfg_defaults():
     return _C.clone()
