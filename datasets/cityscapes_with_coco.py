@@ -5,6 +5,7 @@ from yacs.config import CfgNode
 from datasets.coco_dataset import CocoDatasetWithoutCityscapesClasses
 from PIL import Image
 from typing import List
+from datasets.transforms import DINOv2_transforms
 
 def _get_target_suffix_train(self, mode: str, target_type: str) -> str:
         if target_type == "instance":
@@ -37,6 +38,11 @@ class CityscapesWithCocoDataset(VisionDataset):
             ood_id=cfg.DATASETS.COCO.OOD_ID,
             id_id=cfg.DATASETS.COCO.ID_ID
         )
+        
+        if "dinov2" in cfg.BACKBONE.ARCHITECTURE:
+            self.transform, self.target_transform = DINOv2_transforms(cfg)
+        else:
+            self.transform, self.target_transform = None, None
         
         self.ood_id = cfg.DATASETS.COCO.OOD_ID
         self.id_id = cfg.DATASETS.COCO.ID_ID
@@ -102,6 +108,10 @@ class CityscapesWithCocoDataset(VisionDataset):
         
         mixed_image, mixed_target = self.create_mixed_image(cityscapes_image, cityscapes_target, coco_image, 
                                                             coco_target, ood_id=self.ood_id, id_id=self.id_id)
+        
+        if self.transform is not None:
+            coco_image = self.transform(coco_image)
+            mixed_image = self.transform(mixed_image)
         
         return coco_image, mixed_image, mixed_target        
         

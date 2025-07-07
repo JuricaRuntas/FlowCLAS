@@ -2,3 +2,4 @@ from .coco_dataset import CocoDatasetWithoutCityscapesClasses
 from .cityscapes_with_coco import CityscapesWithCocoDataset
 from .coco_dataset import FilteredCocoDataset
 from .cityscapes_with_coco import _get_target_suffix_train
+from .transforms import DINOv2_transforms, ResizeLongestSideDivisible
