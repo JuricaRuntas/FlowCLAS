@@ -31,7 +31,7 @@ class ActNorm(Diffeomorphism):
             
             self.log_scale.data.copy_(torch.log(std + 1e-6))
             self.bias.data.copy_(mean)
-            
+                        
         self.initialized = True
     
     def forward(self, x):
@@ -62,12 +62,17 @@ class RandomChannelPermutation(Diffeomorphism):
 class Conv2dReLUConv2dBlock(nn.Module):
     def __init__(self, num_features, kernel_size):
         super(Conv2dReLUConv2dBlock, self).__init__()
+        
         self.model = nn.Sequential(
             nn.Conv2d(num_features, num_features, kernel_size, padding=kernel_size // 2),
             nn.ReLU(inplace=True),
             nn.Conv2d(num_features, 2*num_features, kernel_size, padding=kernel_size // 2)
         )
         
+        nn.init.zeros_(self.model[-1].weight)
+        if self.model[-1].bias is not None:
+            nn.init.zeros_(self.model[-1].bias)
+            
     def forward(self, x):
         return torch.chunk(self.model(x), 2, dim=1)
 
@@ -139,16 +144,15 @@ class NormalizingFlow(Diffeomorphism):
             x = flow_step.inverse(x)
         return x
     
-    def log_probability(self, x):
+    def log_probability(self, x, return_anomaly_score=False):
         z, log_det_jacobian = self.forward(x, return_log_det_jacobian=True)
         C = z.shape[1]
         
         log_pz = -0.5 * (z ** 2 + math.log(2 * math.pi))
         
-        if not self.training:
+        if return_anomaly_score:
             log_pz_over_channels = torch.sum(log_pz, dim=1, keepdim=True) + log_det_jacobian.view(-1, 1, 1, 1)  # (B, 1, H, W)
             NPD_anomaly_score = -1.0 / C * log_pz_over_channels
-            NPD_anomaly_score = torch.nn.functional.interpolate(NPD_anomaly_score, size=(x.shape[2], x.shape[3]), mode="bilinear", align_corners=False)
             return NPD_anomaly_score
         
         return torch.sum(log_pz, dim=(1, 2, 3)) + log_det_jacobian

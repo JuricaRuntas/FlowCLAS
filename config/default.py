@@ -11,10 +11,13 @@ _C.DATASETS = CN(new_allowed=True)
 # System configuration
 _C.SYSTEM.NUM_CPUS = 8
 _C.SYSTEM.SEED = 1337
+_C.SYSTEM.DINOV2_FEATURES_ROOT = "/hdd/datasets/dinov2_features"
 # ---------------------------------------------------------------------------- #
 
 
 # ---------------------------------------------------------------------------- #
+_C.DATASETS.IGNORE_LABEL = 255
+
 # COCO
 _C.DATASETS.COCO = CN(new_allowed=True)
 _C.DATASETS.COCO.ROOT = "/hdd/datasets/coco/train2017"
@@ -70,6 +73,9 @@ _C.NORMALIZING_FLOW.NUM_FEATURES = _C.BACKBONE.EMBED_DIM
 _C.NORMALIZING_FLOW.TEMPERATURE = 0.1
 _C.NORMALIZING_FLOW.NUM_EPOCHS = 600
 _C.NORMALIZING_FLOW.BATCH_SIZE = 32
+_C.NORMALIZING_FLOW.LR = 1e-5
+_C.NORMALIZING_FLOW.WEIGHT_DECAY = 1e-5
+_C.NORMALIZING_FLOW.WARMUP_EPOCHS = 10
 
 # ---------------------------------------------------------------------------- #
 

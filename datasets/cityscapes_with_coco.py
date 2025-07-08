@@ -1,7 +1,10 @@
 import numpy as np
 import torch
+from pathlib import Path
+from torch.utils.data import Dataset, DataLoader
 from torchvision.datasets import VisionDataset, Cityscapes
 from yacs.config import CfgNode
+from rich.progress import Progress
 from datasets.coco_dataset import CocoDatasetWithoutCityscapesClasses
 from PIL import Image
 from typing import List
@@ -117,3 +120,48 @@ class CityscapesWithCocoDataset(VisionDataset):
         
     def __len__(self):
         return len(self.cityscapes_dataset)
+
+
+class CityscapesWithCocoFeaturesDataset(Dataset):
+    def __init__(self, cfg: CfgNode, device: torch.device):
+        self.root = Path(cfg.SYSTEM.DINOV2_FEATURES_ROOT)
+        self.dataset = CityscapesWithCocoDataset(cfg)
+        
+        if self.root.exists() and len(self.dataset) == len(list(self.patch_features_root.iterdir())):
+            print(f"DINOv2 per-patch features have already been generated. Skipping...")
+        else:
+            print(f"Cityscapes per-patch features have not been generated. Generating...")
+            print(f"Saving per-patch features to {self.root}")
+            self.root.mkdir(parents=True, exist_ok=True)
+            
+            dinov2 = torch.hub.load("facbookresearch/dinov2", cfg.BACKBONE.ARCHITECTURE).to(device=device)
+            dinov2.eval()
+            
+            dataloader = DataLoader(self.dataset, batch_size=1, shuffle=False)
+            with Progress() as progress:
+                task = progress.add_task(f"Processing CityscapesWithCocoDataset", total=len(self.dataset))
+                for i, (coco_image, mixed_image, mixed_target) in enumerate(dataloader):
+                    progress.update(task, advance=1, 
+                                    description=f"Generating per-patch features for CityscapesWithCocoDataset. Sample {i}/{len(self.dataset)}")
+                    
+                    with torch.no_grad():
+                        coco_features = dinov2.forward_features(coco_image.to(device=device))["x_norm_patchtokens"]
+                        mixed_image_features = dinov2.forward_features(mixed_image.to(device=device))["x_norm_patchtokens"]
+                    
+                    torch.save({"features" : coco_features.cpu().squeeze(), 
+                                "labels" : mixed_target.cpu().squeeze()}, 
+                               self.root / f"{Path(self.dataset.images[i]).stem}_coco.pth")
+                    
+                    torch.save({"features" : mixed_image_features.cpu().squeeze(),
+                                "labels" : mixed_target.cpu().squeeze()}, 
+                               self.root / f"{Path(self.dataset.images[i]).stem}.pth")
+
+    def __len__(self):
+        return len(self.dataset)
+    
+    def __getitem__(self, index):
+        coco_features, labels = torch.load(f"{self.root / Path(self.dataset.images[index]).stem}_coco.pth", map_location="cpu").values()
+        mixed_features, mixed_labels = torch.load(f"{self.root / Path(self.dataset.images[index]).stem}.pth", map_location="cpu").values()
+        
+        return coco_features, mixed_features, mixed_labels
+        

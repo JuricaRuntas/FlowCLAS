@@ -63,6 +63,10 @@ class RoadAnomaly(RoadDrivingOODDataset):
         if "dinov2" in cfg.BACKBONE.ARCHITECTURE:
             transform, target_transform = DINOv2_transforms(cfg)
         super().__init__(cfg, root, transform=transform, target_transform=target_transform)
+    
+    @property
+    def name(self):
+        return "RoadAnomaly"
         
 class FishyscapesLostAndFound(RoadDrivingOODDataset):
     def __init__(self, cfg: CfgNode):
@@ -70,10 +74,18 @@ class FishyscapesLostAndFound(RoadDrivingOODDataset):
         if "dinov2" in cfg.BACKBONE.ARCHITECTURE:
             transform, target_transform = DINOv2_transforms(cfg)
         super().__init__(cfg, root, transform=transform, target_transform=target_transform)
-        
+    
+    @property
+    def name(self):
+        return "FishyscapesLostAndFound"    
+    
 class FishyscapesStatic(RoadDrivingOODDataset):
     def __init__(self, cfg: CfgNode):
         root = Path(cfg.DATASETS.FISHYSCAPES_STATIC.ROOT)
         if "dinov2" in cfg.BACKBONE.ARCHITECTURE:
             transform, target_transform = DINOv2_transforms(cfg)
         super().__init__(cfg, root, transform=transform, target_transform=target_transform)
+        
+    @property
+    def name(self):
+        return "FishyscapesStatic"
