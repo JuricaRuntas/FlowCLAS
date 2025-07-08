@@ -60,7 +60,7 @@ class CityscapesWithCocoDataset(VisionDataset):
 
 
     def paste_anomalous_instance(self, cityscapes_image: np.ndarray, cityscapes_target: np.ndarray, 
-                               coco_image: np.ndarray, coco_instance_mask: np.ndarray, ood_id=254, id_id=0):
+                                 coco_image: np.ndarray, coco_instance_mask: np.ndarray):
         """Pastes an anomalous instance from COCO image onto a Cityscapes image."""
         ood_h, ood_w = coco_image.shape[:2]
         id_h, id_w = cityscapes_image.shape[:2]
@@ -74,13 +74,13 @@ class CityscapesWithCocoDataset(VisionDataset):
                 coco_instance_mask * coco_image[:, :, channel]
             )
             
-        cityscapes_target[loc_y:loc_y+ood_h, loc_x:loc_x+ood_w][coco_instance_mask == 1] = ood_id
+        cityscapes_target[loc_y:loc_y+ood_h, loc_x:loc_x+ood_w][coco_instance_mask == 1] = 1
         
         return cityscapes_image, cityscapes_target
             
 
     def create_mixed_image(self, cityscapes_image: Image.Image, cityscapes_target: Image.Image, 
-                      coco_image: Image.Image, coco_target: List[dict], ood_id=254, id_id=0):
+                           coco_image: Image.Image, coco_target: List[dict]):
         """Creates a mixed content image by pasting anomalous instance from COCO onto Cityscapes images."""
         
         coco_instance_mask = self.coco_dataset.coco.annToMask(np.random.choice(coco_target))
@@ -95,22 +95,29 @@ class CityscapesWithCocoDataset(VisionDataset):
             
             coco_instance_mask = torch.nn.functional.interpolate(
                 torch.from_numpy(coco_instance_mask).unsqueeze(0).unsqueeze(0).double(), 
-                scale_factor=factor, mode='nearest')[0, 0].numpy()
+                scale_factor=factor, mode="nearest")[0, 0].numpy()
             
         return self.paste_anomalous_instance(cityscapes_image=np.array(cityscapes_image),
                                              cityscapes_target=np.array(cityscapes_target),
                                              coco_image=coco_image,
-                                             coco_instance_mask=coco_instance_mask,
-                                             ood_id=ood_id, id_id=id_id)
+                                             coco_instance_mask=coco_instance_mask)
             
     def __getitem__(self, index):
         cityscapes_image, cityscapes_target = self.cityscapes_dataset[index]
         
+        # Create a blank (all zeros) mask; the pasted anomalous object will be labeled as 1,
+        # resulting in a binary segmentation mask for the mixed image
+        cityscapes_target = np.zeros(np.array(cityscapes_target).shape, dtype=np.uint8)
+        
         ood_index = np.random.randint(len(self.selected_coco_ids))
         coco_image, coco_target = self.coco_dataset[int(self.selected_coco_ids[ood_index])]
         
-        mixed_image, mixed_target = self.create_mixed_image(cityscapes_image, cityscapes_target, coco_image, 
-                                                            coco_target, ood_id=self.ood_id, id_id=self.id_id)
+        mixed_image, mixed_target = self.create_mixed_image(cityscapes_image, cityscapes_target, coco_image, coco_target)
+        
+        from PIL import Image
+        Image.fromarray(mixed_target).save("mixed_target.png")
+        coco_image.save("coco_image.png")
+        Image.fromarray(mixed_image).save("mixed_image.png")
         
         if self.transform is not None:
             coco_image = self.transform(coco_image)

@@ -113,6 +113,8 @@ class NormalizingFlow(Diffeomorphism):
     def __init__(self, num_features, num_steps=16, projection_head_dim=256):
         super(NormalizingFlow, self).__init__()
         self.num_features = num_features
+        self.mu = nn.Parameter(torch.zeros(1, num_features, 1, 1))
+        self.log_sigma = nn.Parameter(torch.zeros(1, num_features, 1, 1))
         
         self.flow_steps: List[Diffeomorphism] = nn.ModuleList()
         for i in range(num_steps):
@@ -148,7 +150,7 @@ class NormalizingFlow(Diffeomorphism):
         z, log_det_jacobian = self.forward(x, return_log_det_jacobian=True)
         C = z.shape[1]
         
-        log_pz = -0.5 * (z ** 2 + math.log(2 * math.pi))
+        log_pz = -0.5 * (((z - self.mu) / torch.exp(self.log_sigma)) ** 2 + 2 * self.log_sigma + math.log(2 * math.pi))        
         
         if return_anomaly_score:
             log_pz_over_channels = torch.sum(log_pz, dim=1, keepdim=True) + log_det_jacobian.view(-1, 1, 1, 1)  # (B, 1, H, W)
