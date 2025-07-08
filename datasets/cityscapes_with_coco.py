@@ -114,11 +114,6 @@ class CityscapesWithCocoDataset(VisionDataset):
         
         mixed_image, mixed_target = self.create_mixed_image(cityscapes_image, cityscapes_target, coco_image, coco_target)
         
-        from PIL import Image
-        Image.fromarray(mixed_target).save("mixed_target.png")
-        coco_image.save("coco_image.png")
-        Image.fromarray(mixed_image).save("mixed_image.png")
-        
         if self.transform is not None:
             coco_image = self.transform(coco_image)
             mixed_image = self.transform(mixed_image)
