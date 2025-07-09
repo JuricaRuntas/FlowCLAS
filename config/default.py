@@ -9,9 +9,10 @@ _C.DATASETS = CN(new_allowed=True)
 
 # ---------------------------------------------------------------------------- #
 # System configuration
-_C.SYSTEM.NUM_CPUS = 8
+_C.SYSTEM.NUM_WORKERS = 8
 _C.SYSTEM.SEED = 1337
 _C.SYSTEM.DINOV2_FEATURES_ROOT = "/hdd/datasets/dinov2_features"
+_C.SYSTEM.OUTPUT_DIR = "./flowclas_output_dir"
 # ---------------------------------------------------------------------------- #
 
 
@@ -76,6 +77,7 @@ _C.NORMALIZING_FLOW.BATCH_SIZE = 32
 _C.NORMALIZING_FLOW.LR = 1e-5
 _C.NORMALIZING_FLOW.WEIGHT_DECAY = 1e-5
 _C.NORMALIZING_FLOW.WARMUP_EPOCHS = 10
+_C.NORMALIZING_FLOW.ALPHA = 0.1 # loss hyperparameter
 
 # ---------------------------------------------------------------------------- #
 

@@ -151,19 +151,19 @@ class CityscapesWithCocoFeaturesDataset(Dataset):
                         mixed_image_features = dinov2.forward_features(mixed_image.to(device=device))["x_norm_patchtokens"]
                     
                     torch.save({"features" : coco_features.cpu().squeeze(), 
-                                "labels" : mixed_target.cpu().squeeze()}, 
+                                "target" : mixed_target.cpu().squeeze()}, 
                                self.root / f"{Path(self.dataset.images[i]).stem}_coco.pth")
                     
                     torch.save({"features" : mixed_image_features.cpu().squeeze(),
-                                "labels" : mixed_target.cpu().squeeze()}, 
+                                "target" : mixed_target.cpu().squeeze()}, 
                                self.root / f"{Path(self.dataset.images[i]).stem}.pth")
 
     def __len__(self):
         return len(self.dataset)
     
     def __getitem__(self, index):
-        coco_features, labels = torch.load(f"{self.root / Path(self.dataset.images[index]).stem}_coco.pth", map_location="cpu").values()
-        mixed_features, mixed_labels = torch.load(f"{self.root / Path(self.dataset.images[index]).stem}.pth", map_location="cpu").values()
+        coco_features, target = torch.load(f"{self.root / Path(self.dataset.images[index]).stem}_coco.pth", map_location="cpu").values()
+        mixed_features, mixed_target = torch.load(f"{self.root / Path(self.dataset.images[index]).stem}.pth", map_location="cpu").values()
         
-        return coco_features, mixed_features, mixed_labels
+        return coco_features, mixed_features, mixed_target
         

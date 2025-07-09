@@ -124,7 +124,7 @@ class NormalizingFlow(Diffeomorphism):
                 
         self.projection = nn.Conv2d(num_features, projection_head_dim, kernel_size=1, bias=True)
 
-    def forward(self, x, return_log_det_jacobian=False):
+    def forward(self, x):
         z = x
         log_det_jacobian = 0.0
         
@@ -132,13 +132,11 @@ class NormalizingFlow(Diffeomorphism):
             z, _log_det_jacobian = flow_step(z)
             log_det_jacobian += _log_det_jacobian
         
-        if return_log_det_jacobian:
-            return z, log_det_jacobian
-        
-        if self.training:
-            z = self.projection(z)
-        
-        return z
+        z_projected = (z - self.mu) * torch.exp(-self.log_sigma)
+        z_projected = self.projection(z_projected)
+        z_projected = z_projected / (torch.norm(z_projected, p=2, dim=1, keepdim=True) + 1e-6)
+            
+        return z, z_projected, log_det_jacobian
     
     def inverse(self, y):
         x = y
@@ -146,12 +144,11 @@ class NormalizingFlow(Diffeomorphism):
             x = flow_step.inverse(x)
         return x
     
-    def log_probability(self, x, return_anomaly_score=False):
-        z, log_det_jacobian = self.forward(x, return_log_det_jacobian=True)
+    def log_probability(self, z, log_det_jacobian, return_anomaly_score=False):
         C = z.shape[1]
-        
-        log_pz = -0.5 * (((z - self.mu) / torch.exp(self.log_sigma)) ** 2 + 2 * self.log_sigma + math.log(2 * math.pi))        
-        
+                        
+        log_pz = -0.5 * (((z - self.mu) * torch.exp(-self.log_sigma)) ** 2 + math.log(2 * math.pi) + 2 * self.log_sigma)
+
         if return_anomaly_score:
             log_pz_over_channels = torch.sum(log_pz, dim=1, keepdim=True) + log_det_jacobian.view(-1, 1, 1, 1)  # (B, 1, H, W)
             NPD_anomaly_score = -1.0 / C * log_pz_over_channels
