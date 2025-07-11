@@ -1,4 +1,7 @@
+import torch
 import numpy as np
+import torch.nn.functional as F
+from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from sklearn.metrics import roc_curve, auc, average_precision_score
@@ -54,3 +57,92 @@ def calculate_eval_metrics(conf: np.ndarray, labels: np.ndarray) -> tuple[float,
     TAU_FPR_95 = threshold[tpr >= 0.95][0]
     
     return AP, AUROC, FPR_95, TAU_FPR_95
+
+
+class InfoNCE2d(nn.Module):
+    """
+    InfoNCE2d loss for 2D (spatial) features.
+    """
+    def __init__(self, max_anchors_per_class: int = 512, temperature: float = 1.0, ignore_label: int = 255):
+        """
+        Args:
+            max_anchors_per_class (int): Maximum number of anchors per class.
+            temperature (float): Temperature parameter for scaling.
+            ignore_label (int): Label to ignore in the loss computation.
+        """
+        super(InfoNCE2d, self).__init__()
+        self.max_anchors_per_class = max_anchors_per_class
+        self.temperature = temperature
+        self.ignore_label = ignore_label
+        
+    def construct_sets(self, z_mix, y_mix, z_out):
+        batch_size, embedding_dim, H_mix, W_mix = z_mix.shape
+        _, _, H_out, W_out = z_out.shape
+        device = z_mix.device 
+
+        z_mix = z_mix.view(batch_size, H_mix * W_mix, embedding_dim)
+        y_mix = y_mix.view(batch_size, H_mix * W_mix)
+        
+        in_embeddings = z_mix[(y_mix == 0) & (y_mix != self.ignore_label)]
+        out_embeddings = z_mix[y_mix == 1]
+        
+        z_out = z_out.view(batch_size*H_out*W_out, embedding_dim)
+        
+        N = min(self.max_anchors_per_class, in_embeddings.shape[0],
+                out_embeddings.shape[0], z_out.shape[0]//2)
+        
+        A_in = in_embeddings[torch.randperm(in_embeddings.shape[0])][:N]
+        A_ood = out_embeddings[torch.randperm(out_embeddings.shape[0])][:N]
+        
+        z_out_permuted = z_out[torch.randperm(z_out.shape[0])]
+        B_in = z_out_permuted[:N]
+        B_ood = z_out_permuted[N:2*N]
+        
+        # anchor set
+        A = torch.cat([A_in, A_ood], dim=0)
+        A_labels = torch.cat([torch.zeros(A_in.shape[0], device=device),
+                              torch.ones(A_ood.shape[0], device=device)], dim=0)
+        
+        # contrast set
+        C = torch.cat([A_in, A_ood, B_in, B_ood], dim=0)
+        C_labels = torch.cat([torch.zeros(A_in.shape[0], device=device),
+                              torch.ones(A_ood.shape[0], device=device),
+                              torch.zeros(B_in.shape[0], device=device),
+                              torch.ones(B_ood.shape[0], device=device)], dim=0)
+        
+        return A, A_labels, C, C_labels
+        
+    def forward(self, z_mix, y_mix, z_out):
+        """
+        Args:
+            z_mix (torch.Tensor): Mixed features.
+            y_mix (torch.Tensor): Labels for mixed features.
+            z_out (torch.Tensor): Outlier features.
+        
+        Returns:
+            torch.Tensor: Computed InfoNCE2d loss.
+        """
+        
+        z_mix, z_out = F.normalize(z_mix, p=2, dim=1, eps=1e-6), F.normalize(z_out, p=2, dim=1, eps=1e-6)
+        A, A_labels, C, C_labels = self.construct_sets(z_mix, y_mix, z_out)
+        
+        # (num_anchors, embed_dim) x (num_contrast, embed_dim) -> (num_anchors, num_contrast) 
+        # cosine similarity matrix
+        logits = torch.mm(A, C.T) / self.temperature
+        
+        logits = logits - torch.max(logits, dim=1, keepdim=True)[0].detach()
+        
+        # A_labels[i] == C_labels[j] <=> (class(i) == class(j)) <=> (sample (i, j) is a positive pair) 
+        # Also, mask the diagonal to avoid self-comparison
+        diagonal_mask = ~torch.eye(A_labels.shape[0], C_labels.shape[0], device=A.device, dtype=torch.bool)
+        positive_mask = torch.eq(A_labels[:, None], C_labels[None, :]) & diagonal_mask
+        negative_mask = ~positive_mask & diagonal_mask
+        
+        # in the denominator, we are summing over all negatives for a given anchor
+        # anchors are in the rows -> we sum over the columns
+        C_minus_sum = (torch.exp(logits) * negative_mask).sum(dim=1, keepdim=True)
+        
+        log_softmax = logits - torch.log(torch.exp(logits) + C_minus_sum + 1e-6)
+        
+        # We only take the log probabilities of the positives and sum over them
+        return - ((log_softmax * positive_mask).sum() / positive_mask.sum()).mean()

@@ -134,8 +134,7 @@ class NormalizingFlow(Diffeomorphism):
         
         z_projected = (z - self.mu) * torch.exp(-self.log_sigma)
         z_projected = self.projection(z_projected)
-        z_projected = z_projected / (torch.norm(z_projected, p=2, dim=1, keepdim=True) + 1e-6)
-            
+           
         return z, z_projected, log_det_jacobian
     
     def inverse(self, y):

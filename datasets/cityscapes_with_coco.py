@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
 from pathlib import Path
 from torch.utils.data import Dataset, DataLoader
 from torchvision.datasets import VisionDataset, Cityscapes
@@ -47,8 +48,8 @@ class CityscapesWithCocoDataset(VisionDataset):
         else:
             self.transform, self.target_transform = None, None
         
-        self.ood_id = cfg.DATASETS.COCO.OOD_ID
-        self.id_id = cfg.DATASETS.COCO.ID_ID
+        self.subsampling_factor = cfg.BACKBONE.PATCH_SIZE
+        self.ignore_label = cfg.DATASETS.IGNORE_LABEL
         
         self.random_rescale_lower = cfg.DATASETS.COCO.RANDOM_RESCALE_LOWER
         self.random_rescale_upper = cfg.DATASETS.COCO.RANDOM_RESCALE_UPPER
@@ -76,7 +77,7 @@ class CityscapesWithCocoDataset(VisionDataset):
             
         cityscapes_target[loc_y:loc_y+ood_h, loc_x:loc_x+ood_w][coco_instance_mask == 1] = 1
         
-        return cityscapes_image, cityscapes_target
+        return Image.fromarray(cityscapes_image), Image.fromarray(cityscapes_target)
             
 
     def create_mixed_image(self, cityscapes_image: Image.Image, cityscapes_target: Image.Image, 
@@ -89,13 +90,11 @@ class CityscapesWithCocoDataset(VisionDataset):
         factor = size / max(coco_instance_mask.shape)
         
         if factor < 1.0:
-            coco_image = torch.nn.functional.interpolate(
-                torch.from_numpy(np.array(coco_image)).float().permute(2, 0, 1).unsqueeze(0), 
-                scale_factor=factor)[0].permute(1, 2, 0).long().numpy()
+            coco_image = F.interpolate(torch.from_numpy(np.array(coco_image)).float().permute(2, 0, 1).unsqueeze(0), 
+                                       scale_factor=factor)[0].permute(1, 2, 0).long().numpy()
             
-            coco_instance_mask = torch.nn.functional.interpolate(
-                torch.from_numpy(coco_instance_mask).unsqueeze(0).unsqueeze(0).double(), 
-                scale_factor=factor, mode="nearest")[0, 0].numpy()
+            coco_instance_mask = F.interpolate(torch.from_numpy(coco_instance_mask).unsqueeze(0).unsqueeze(0).double(), 
+                                               scale_factor=factor, mode="nearest")[0, 0].numpy()
             
         return self.paste_anomalous_instance(cityscapes_image=np.array(cityscapes_image),
                                              cityscapes_target=np.array(cityscapes_target),
@@ -105,9 +104,12 @@ class CityscapesWithCocoDataset(VisionDataset):
     def __getitem__(self, index):
         cityscapes_image, cityscapes_target = self.cityscapes_dataset[index]
         
-        # Create a blank (all zeros) mask; the pasted anomalous object will be labeled as 1,
-        # resulting in a binary segmentation mask for the mixed image
-        cityscapes_target = np.zeros(np.array(cityscapes_target).shape, dtype=np.uint8)
+        # The pasted anomalous object will be labeled as 1 resulting in a binary segmentation mask 
+        # for the mixed image, however, we keep ignore label for later processing
+        cityscapes_target = np.array(cityscapes_target)
+        cityscapes_target[cityscapes_target != self.ignore_label] = 0
+        cityscapes_target = Image.fromarray(cityscapes_target)
+        
         
         ood_index = np.random.randint(len(self.selected_coco_ids))
         coco_image, coco_target = self.coco_dataset[int(self.selected_coco_ids[ood_index])]
@@ -116,8 +118,14 @@ class CityscapesWithCocoDataset(VisionDataset):
         
         if self.transform is not None:
             coco_image = self.transform(coco_image)
-            mixed_image = self.transform(mixed_image)
+            mixed_image = self.transform(mixed_image)            
         
+        if self.target_transform is not None:
+            mixed_target = self.target_transform(mixed_target)
+            mixed_target = F.interpolate(mixed_target.unsqueeze(0).float(), 
+                                         size=(mixed_image.shape[-2]//self.subsampling_factor, mixed_image.shape[-1]//self.subsampling_factor), 
+                                         mode="nearest")[0, 0].long()
+            
         return coco_image, mixed_image, mixed_target        
         
     def __len__(self):
@@ -150,12 +158,10 @@ class CityscapesWithCocoFeaturesDataset(Dataset):
                         coco_features = dinov2.forward_features(coco_image.to(device=device))["x_norm_patchtokens"]
                         mixed_image_features = dinov2.forward_features(mixed_image.to(device=device))["x_norm_patchtokens"]
                     
-                    torch.save({"features" : coco_features.cpu().squeeze(), 
-                                "target" : mixed_target.cpu().squeeze()}, 
+                    torch.save({"features" : coco_features.cpu().squeeze(), "target" : mixed_target.cpu().squeeze()}, 
                                self.root / f"{Path(self.dataset.images[i]).stem}_coco.pth")
                     
-                    torch.save({"features" : mixed_image_features.cpu().squeeze(),
-                                "target" : mixed_target.cpu().squeeze()}, 
+                    torch.save({"features" : mixed_image_features.cpu().squeeze(), "target" : mixed_target.cpu().squeeze()}, 
                                self.root / f"{Path(self.dataset.images[i]).stem}.pth")
 
     def __len__(self):
