@@ -26,7 +26,6 @@ class FilteredCocoDataset(CocoDetection):
             
             if not any(ann["category_id"] in exclude_category_ids for ann in annotations) and \
                 (image_info['height'] >= min_size and image_info['width'] >= min_size):
-                
                 do_not_exclude_img_ids.append(image_id)
         
         self.ids = do_not_exclude_img_ids
@@ -35,21 +34,17 @@ class FilteredCocoDataset(CocoDetection):
 class CocoDatasetWithoutCityscapesClasses(FilteredCocoDataset):
     """A filtered version of the COCO dataset that excludes classes visually overlapping with Cityscapes classes."""
     
-    def __init__(self, root: Path, json_annotation_file: Path, min_size: int = 480, ood_id: int = 254, id_id: int = 0):
+    def __init__(self, root: Path, json_annotation_file: Path, min_size: int = 480):
         """
         Args:
             root (Path): Path to the directory containing COCO images.
             json_annotation_file (Path): Path to the COCO JSON annotation file.
             min_size (int): Minimum size for images to be included in the dataset.
-            ood_id (int): ID for out-of-distribution objects in COCO images.
-            id_id (int): ID for in-distribution objects in COCO images.
         """
         
         # These classes are visually overlapping with Cityscapes classes and
         # should be excluded for (pseudo) outlier exposure
         self.exclude_classes = ["person", "car", "truck", "bus", "motorcycle", "bicycle", "traffic light", "traffic sign"]
         self.min_size = min_size
-        self.ood_id = ood_id
-        self.id_id = id_id
         super().__init__(root, json_annotation_file, self.exclude_classes, min_size)
         

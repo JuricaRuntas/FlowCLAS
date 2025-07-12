@@ -5,6 +5,7 @@ from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from sklearn.metrics import roc_curve, auc, average_precision_score
+from typing import Tuple
 
 class CosineLRWithLinearWarmup(LRScheduler):
     def __init__(self, optimizer: Optimizer, num_warmup_steps: int, 
@@ -34,7 +35,7 @@ class CosineLRWithLinearWarmup(LRScheduler):
         return [base_lr * cosine_decay for base_lr in self.base_lrs]
     
     
-def calculate_eval_metrics(conf: np.ndarray, labels: np.ndarray) -> tuple[float, float, float, float]:
+def calculate_eval_metrics(conf: np.ndarray, labels: np.ndarray) -> Tuple[float, float, float, float]:
     """
     Calculates pixel-level evaluation metrics.
     
@@ -132,17 +133,16 @@ class InfoNCE2d(nn.Module):
         
         logits = logits - torch.max(logits, dim=1, keepdim=True)[0].detach()
         
-        # A_labels[i] == C_labels[j] <=> (class(i) == class(j)) <=> (sample (i, j) is a positive pair) 
+        # A_labels[i] == C_labels[j] <=> (class(i) == class(j)) <=> ((i, j) is a positive pair)
         # Also, mask the diagonal to avoid self-comparison
         diagonal_mask = ~torch.eye(A_labels.shape[0], C_labels.shape[0], device=A.device, dtype=torch.bool)
         positive_mask = torch.eq(A_labels[:, None], C_labels[None, :]) & diagonal_mask
         negative_mask = ~positive_mask & diagonal_mask
         
         # in the denominator, we are summing over all negatives for a given anchor
-        # anchors are in the rows -> we sum over the columns
+        # anchors are in the rows -> we sum over columns
         C_minus_sum = (torch.exp(logits) * negative_mask).sum(dim=1, keepdim=True)
         
         log_softmax = logits - torch.log(torch.exp(logits) + C_minus_sum + 1e-6)
-        
-        # We only take the log probabilities of the positives and sum over them
-        return - ((log_softmax * positive_mask).sum() / positive_mask.sum()).mean()
+        # We only take the log probabilities of the positives
+        return -log_softmax[positive_mask].mean()

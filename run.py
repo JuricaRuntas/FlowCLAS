@@ -10,9 +10,9 @@ from pathlib import Path
 from normalizing_flow import NormalizingFlow
 
 from config import get_cfg_defaults
-from datasets.cityscapes_with_coco import CityscapesWithCocoDataset
+from datasets.cityscapes_with_coco import CityscapesWithCocoFeaturesDataset
 from datasets.ood_datasets import RoadAnomaly, FishyscapesLostAndFound, FishyscapesStatic
-from utils import CosineLRWithLinearWarmup, calculate_eval_metrics
+from utils import CosineLRWithLinearWarmup, calculate_eval_metrics, InfoNCE2d
 
 def eval(normalizing_flow: NormalizingFlow, cfg: CfgNode, device: torch.device):
     normalizing_flow.eval()
@@ -31,7 +31,7 @@ def eval(normalizing_flow: NormalizingFlow, cfg: CfgNode, device: torch.device):
                 img = torch.randn(1, 1024, img.shape[1] //14, img.shape[2] // 14).to(device)  # Simulating DINOv2 feature extraction
                 
                 z, z_projected, log_det_jacobian = normalizing_flow(img)
-                anomaly_score = normalizing_flow.log_probability(z, log_det_jacobian, return_anomaly_score=True)
+                anomaly_score = normalizing_flow.log_density(z, log_det_jacobian, return_anomaly_score=True)
                 
                 anomaly_score = torch.nn.functional.interpolate(
                         anomaly_score, size=target.shape[-2:], mode="bilinear", align_corners=False
@@ -61,7 +61,7 @@ class FakeSegmentationDataset(Dataset):
     def __init__(self, num_samples=2975, img_shape=(1024, 1022, 2044), downscale=14):
         self.num_samples = num_samples
         self.img_shape = (1024, img_shape[1] // downscale, img_shape[2] // downscale)
-        self.mask_shape = (img_shape[1] // downscale, img_shape[2] // downscale, 1)
+        self.mask_shape = (img_shape[1] // downscale, img_shape[2] // downscale)
         self.downscale = downscale
 
     def __len__(self):
@@ -75,12 +75,12 @@ class FakeSegmentationDataset(Dataset):
         # Fake mask
         mask = torch.zeros(self.mask_shape, dtype=torch.uint8)
         # Random rectangle
-        h, w, _ = self.mask_shape
+        h, w = self.mask_shape
         rect_h = torch.randint(5, h // 2, (1,)).item()
         rect_w = torch.randint(5, w // 2, (1,)).item()
         y0 = torch.randint(0, h - rect_h, (1,)).item()
         x0 = torch.randint(0, w - rect_w, (1,)).item()
-        mask[y0:y0+rect_h, x0:x0+rect_w, 0] = 1
+        mask[y0:y0+rect_h, x0:x0+rect_w] = 1
         return img, extra_img, mask
     
 
@@ -92,6 +92,9 @@ def train(normalizing_flow: NormalizingFlow, cfg: CfgNode, device: torch.device)
     
     optimizer = torch.optim.AdamW(normalizing_flow.parameters(), lr=cfg.NORMALIZING_FLOW.LR, weight_decay=cfg.NORMALIZING_FLOW.WEIGHT_DECAY)
     scheduler = CosineLRWithLinearWarmup(optimizer, cfg.NORMALIZING_FLOW.WARMUP_EPOCHS, cfg.NORMALIZING_FLOW.NUM_EPOCHS)
+    contrastive_loss = InfoNCE2d(max_anchors_per_class=cfg.NORMALIZING_FLOW.MAX_ANCHORS_PER_CLASS,
+                                 temperature=cfg.NORMALIZING_FLOW.TEMPERATURE, 
+                                 ignore_label=cfg.DATASETS.IGNORE_LABEL)
     
     dataset = FakeSegmentationDataset() # TODO: PLACEHOLDER
     dataloader = DataLoader(dataset, batch_size=2, shuffle=True, num_workers=cfg.SYSTEM.NUM_WORKERS, pin_memory=True, drop_last=False)
@@ -107,20 +110,21 @@ def train(normalizing_flow: NormalizingFlow, cfg: CfgNode, device: torch.device)
             mixed_image_features = mixed_image_features.to(device)
             mixed_target = mixed_target.to(device)
             
-            z, z_projected, log_det_jacobian = normalizing_flow(coco_features)
-            loss = (mixed_target.to(torch.int8) - 1) * normalizing_flow.log_probability(z, log_det_jacobian)
-            
-            z, z_projected, log_det_jacobian = normalizing_flow(mixed_image_features)
-            loss += cfg.NORMALIZING_FLOW.ALPHA * 0.0 # Placeholder for additional loss
+            z_mix, z_mix_projected, z_mix_log_abs_det_jacobian = normalizing_flow(mixed_image_features)
+            z_out, z_out_projected, z_out_log_abs_det_jacobian = normalizing_flow(coco_features)
+
+            NLL_loss = -normalizing_flow.log_density(z_mix, z_mix_log_abs_det_jacobian)[mixed_target == 0]
+                                    
+            loss = cfg.NORMALIZING_FLOW.ALPHA * NLL_loss.mean() + contrastive_loss(z_mix_projected, mixed_target, z_out_projected)
             
             optimizer.zero_grad()
-            loss.mean().backward()
+            loss.backward()
             optimizer.step()
-            total_loss += loss.mean().item()
+            total_loss += loss.item()
             scheduler.step()
             
             if (i + 1) % 10 == 0:
-                print(f"Batch {i+1}/{len(dataloader)} - Loss: {loss.mean().item():.4f}")
+                print(f"Batch {i+1}/{len(dataloader)} - Loss: {loss.item():.4f}")
             
         print(f"Epoch {epoch+1} average loss: {total_loss / len(dataloader):.4f}")
         print("Saving model checkpoint...")
