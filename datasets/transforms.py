@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import torchvision
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms import Compose, ToTensor, Normalize, PILToTensor
@@ -39,9 +40,31 @@ class ResizeLongestSideDivisible:
         else:
             raise NotImplementedError
 
+
 def DINOv2_transforms(cfg: CfgNode):
     transform = Compose([ToTensor(), 
                          ResizeLongestSideDivisible(cfg.BACKBONE.PATCH_SIZE), 
                          Normalize(mean=cfg.BACKBONE.NORM_MEAN, std=cfg.BACKBONE.NORM_STD)])
     labels_transform = Compose([PILToTensor()])
     return transform, labels_transform
+
+
+def pad_to_shape(x, target_shape):
+    """
+    Pads the input tensor `x` to match the target shape.
+    
+    Args:
+        x (torch.Tensor): Input tensor of shape (C, H, W).
+        target_shape (tuple): Target shape (H, W) to pad to.
+        
+    Returns:
+        torch.Tensor: Padded tensor of shape (C, target_shape[0], target_shape[1]).
+    """
+    C, H, W = x.shape
+    target_H, target_W = target_shape
+    
+    if H < target_H or W < target_W:
+        padding = (0, max(0, target_W - W), 0, max(0, target_H - H))
+        return F.pad(x, padding)
+    
+    return x

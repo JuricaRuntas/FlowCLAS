@@ -11,7 +11,7 @@ _C.DATASETS = CN(new_allowed=True)
 # System configuration
 _C.SYSTEM.NUM_WORKERS = 8
 _C.SYSTEM.SEED = 1337
-_C.SYSTEM.DINOV2_FEATURES_ROOT = "/hdd/datasets/dinov2_features"
+_C.SYSTEM.DINOV2_FEATURES_ROOT = "/workspace/dinov2_features"
 _C.SYSTEM.OUTPUT_DIR = "./flowclas_output_dir"
 # ---------------------------------------------------------------------------- #
 
@@ -21,8 +21,8 @@ _C.DATASETS.IGNORE_LABEL = 255
 
 # COCO
 _C.DATASETS.COCO = CN(new_allowed=True)
-_C.DATASETS.COCO.ROOT = "/hdd/datasets/coco/train2017"
-_C.DATASETS.COCO.ANNOTATIONS = "/hdd/datasets/coco/annotations/instances_train2017.json"
+_C.DATASETS.COCO.ROOT = "/workspace/datasets/coco/train2017"
+_C.DATASETS.COCO.ANNOTATIONS = "/workspace/datasets/coco/annotations/instances_train2017.json"
 _C.DATASETS.COCO.MIN_SIZE = 480 # only consider images with H >= MIN_SIZE AND W >= MIN_SIZE
 
 # OOD instances will be randomly rescaled before pasting on Cityscapes images
@@ -31,22 +31,22 @@ _C.DATASETS.COCO.RANDOM_RESCALE_UPPER = 512
 
 # Cityscapes
 _C.DATASETS.CITYSCAPES = CN(new_allowed=True)
-_C.DATASETS.CITYSCAPES.ROOT = "/hdd/datasets/cityscapes"
+_C.DATASETS.CITYSCAPES.ROOT = "/workspace/datasets/cityscapes"
 _C.DATASETS.CITYSCAPES.SPLIT = "train"
 _C.DATASETS.CITYSCAPES.MODE = "fine"
 _C.DATASETS.CITYSCAPES.TARGET_TYPE = "semantic"
 
 # RoadAnomaly
 _C.DATASETS.ROAD_ANOMALY = CN(new_allowed=True)
-_C.DATASETS.ROAD_ANOMALY.ROOT = "/hdd/datasets/road_anomaly"
+_C.DATASETS.ROAD_ANOMALY.ROOT = "/workspace/datasets/road_anomaly"
 
 # Fishyscapes Lost&Found
 _C.DATASETS.FISHYSCAPES_LAF = CN(new_allowed=True)
-_C.DATASETS.FISHYSCAPES_LAF.ROOT = "/hdd/datasets/fs_lost_and_found"
+_C.DATASETS.FISHYSCAPES_LAF.ROOT = "/workspace/datasets/fs_lost_and_found"
 
 # Fishyscapes Static
 _C.DATASETS.FISHYSCAPES_STATIC = CN(new_allowed=True)
-_C.DATASETS.FISHYSCAPES_STATIC.ROOT = "/hdd/datasets/fs_static_val"
+_C.DATASETS.FISHYSCAPES_STATIC.ROOT = "/workspace/datasets/fs_static_val"
 
 # ---------------------------------------------------------------------------- #
 

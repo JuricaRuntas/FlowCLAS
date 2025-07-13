@@ -133,9 +133,11 @@ class CityscapesWithCocoDataset(Dataset):
 class CityscapesWithCocoFeaturesDataset(Dataset):
     def __init__(self, cfg: CfgNode, device: torch.device):
         self.root = Path(cfg.SYSTEM.DINOV2_FEATURES_ROOT)
+        self.patch_size = cfg.BACKBONE.PATCH_SIZE
+        self.embed_dim = cfg.BACKBONE.EMBED_DIM
         self.dataset = CityscapesWithCocoDataset(cfg)
         
-        if self.root.exists() and len(self.dataset) == len(list(self.root.iterdir())):
+        if self.root.exists():
             print(f"DINOv2 per-patch features have already been generated. Skipping...")
         else:
             print(f"Cityscapes per-patch features have not been generated. Generating...")
@@ -152,15 +154,27 @@ class CityscapesWithCocoFeaturesDataset(Dataset):
                     progress.update(task, advance=1, 
                                     description=f"Generating per-patch features for CityscapesWithCocoDataset. Sample {i}/{len(self.dataset)}")
                     
+                    _, _, H_mixed, W_mixed = mixed_image.shape
+                    _, _, H_coco, W_coco = coco_image.shape
+                    
+                    if not (H_mixed % self.patch_size == 0 and W_mixed % self.patch_size == 0 and
+                            H_coco % self.patch_size == 0 and W_coco % self.patch_size == 0):
+                        raise ValueError(f"Image dimensions {H_mixed}x{W_mixed} and {H_coco}x{W_coco} must be divisible by patch size {self.patch_size}.")
+                                        
+                    H_mixed //= self.patch_size
+                    W_mixed //= self.patch_size
+                    H_coco //= self.patch_size
+                    W_coco //= self.patch_size
+                    
                     with torch.no_grad():
                         coco_features = dinov2.forward_features(coco_image.to(device=device))["x_norm_patchtokens"]
                         mixed_image_features = dinov2.forward_features(mixed_image.to(device=device))["x_norm_patchtokens"]
                     
-                    torch.save({"features" : coco_features.cpu().squeeze(), "target" : mixed_target.cpu().squeeze()}, 
-                               self.root / f"{Path(self.dataset.cityscapes_dataset.images[i]).stem}_coco.pth")
+                    torch.save({"features" : coco_features.view(-1, H_coco, W_coco, self.embed_dim).permute(0, 3, 1, 2).cpu().squeeze(), 
+                                "target" : mixed_target.cpu().squeeze()}, self.root / f"{Path(self.dataset.cityscapes_dataset.images[i]).stem}_coco.pth")
                     
-                    torch.save({"features" : mixed_image_features.cpu().squeeze(), "target" : mixed_target.cpu().squeeze()}, 
-                               self.root / f"{Path(self.dataset.cityscapes_dataset.images[i]).stem}.pth")
+                    torch.save({"features" : mixed_image_features.view(-1, H_mixed, W_mixed, self.embed_dim).permute(0, 3, 1, 2).cpu().squeeze(), 
+                                "target" : mixed_target.cpu().squeeze()}, self.root / f"{Path(self.dataset.cityscapes_dataset.images[i]).stem}.pth")
 
     def __len__(self):
         return len(self.dataset)

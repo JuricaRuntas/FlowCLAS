@@ -1,11 +1,13 @@
 import torch
 import numpy as np
+import random
 import torch.nn.functional as F
 from torch import nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from sklearn.metrics import roc_curve, auc, average_precision_score
 from typing import Tuple
+from datasets.transforms import pad_to_shape
 
 class CosineLRWithLinearWarmup(LRScheduler):
     def __init__(self, optimizer: Optimizer, num_warmup_steps: int, 
@@ -146,3 +148,33 @@ class InfoNCE2d(nn.Module):
         log_softmax = logits - torch.log(torch.exp(logits) + C_minus_sum + 1e-6)
         # We only take the log probabilities of the positives
         return -log_softmax[positive_mask].mean()
+    
+    
+def seed_worker(worker_id):
+    """
+    Seed worker function for DataLoader to ensure reproducibility.
+    
+    Args:
+        worker_id (int): Worker ID.
+    """
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+    
+    
+def collate_fn_pad_coco_features(batch):
+    """
+    Since COCO images and therefore their features can have different sizes,
+    this function pads the features to the maximum height and width in the batch.
+    """
+    coco_features, mixed_image_features, mixed_target = zip(*batch)
+    
+    max_H = max([f.shape[-2] for f in coco_features])
+    max_W = max([f.shape[-1] for f in coco_features])
+    
+    padded_coco_features = torch.stack([pad_to_shape(f, (max_H, max_W)) for f in coco_features], dim=0)
+    mixed_features = torch.stack(mixed_image_features, dim=0)
+    mixed_target = torch.stack(mixed_target, dim=0)
+    coco_features_shape = [(f.shape[-2], f.shape[-1]) for f in coco_features]
+    
+    return padded_coco_features, mixed_features, mixed_target, coco_features_shape

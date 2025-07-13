@@ -43,8 +43,8 @@ class RoadDrivingOODDataset(Dataset):
     def __getitem__(self, index):
         img = Image.open(self.images[index]).convert("RGB")        
         target = np.array(Image.open(self.targets[index]).convert("L"))
-        
-        if self.root == self.cfg.DATASETS.ROAD_ANOMALY.ROOT:
+                
+        if self.root == Path(self.cfg.DATASETS.ROAD_ANOMALY.ROOT):
             target[target == 2] = 1
             
         target = Image.fromarray(target)
@@ -66,7 +66,7 @@ class RoadAnomaly(RoadDrivingOODDataset):
     
     @property
     def name(self):
-        return "RoadAnomaly"
+        return "Road Anomaly"
         
 class FishyscapesLostAndFound(RoadDrivingOODDataset):
     def __init__(self, cfg: CfgNode):
@@ -77,7 +77,7 @@ class FishyscapesLostAndFound(RoadDrivingOODDataset):
     
     @property
     def name(self):
-        return "FishyscapesLostAndFound"    
+        return "Fishyscapes LostAndFound"    
     
 class FishyscapesStatic(RoadDrivingOODDataset):
     def __init__(self, cfg: CfgNode):
@@ -88,4 +88,4 @@ class FishyscapesStatic(RoadDrivingOODDataset):
         
     @property
     def name(self):
-        return "FishyscapesStatic"
+        return "Fishyscapes Static"
