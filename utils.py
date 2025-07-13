@@ -78,7 +78,7 @@ class InfoNCE2d(nn.Module):
         self.temperature = temperature
         self.ignore_label = ignore_label
         
-    def construct_sets(self, z_mix, y_mix, z_out):
+    def construct_sets(self, z_mix, y_mix, z_out, z_out_valid_mask=None):
         batch_size, embedding_dim, H_mix, W_mix = z_mix.shape
         _, _, H_out, W_out = z_out.shape
         device = z_mix.device 
@@ -89,7 +89,11 @@ class InfoNCE2d(nn.Module):
         in_embeddings = z_mix[(y_mix == 0) & (y_mix != self.ignore_label)]
         out_embeddings = z_mix[y_mix == 1]
         
-        z_out = z_out.view(batch_size*H_out*W_out, embedding_dim)
+        if z_out_valid_mask is not None:
+            z_out = z_out.permute(0, 2, 3, 1) # (B, H_out, W_out, C)
+            z_out = z_out[z_out_valid_mask] # (B*H_out*W_out, C)
+        else:
+            z_out = z_out.view(batch_size*H_out*W_out, embedding_dim)
         
         N = min(self.max_anchors_per_class, in_embeddings.shape[0],
                 out_embeddings.shape[0], z_out.shape[0]//2)
@@ -115,19 +119,19 @@ class InfoNCE2d(nn.Module):
         
         return A, A_labels, C, C_labels
         
-    def forward(self, z_mix, y_mix, z_out):
+    def forward(self, z_mix, y_mix, z_out, z_out_valid_mask=None):
         """
         Args:
             z_mix (torch.Tensor): Mixed features.
             y_mix (torch.Tensor): Labels for mixed features.
             z_out (torch.Tensor): Outlier features.
-        
+            z_out_valid_mask (torch.Tensor, optional): Mask for valid outlier features since they may have been padded.
         Returns:
             torch.Tensor: Computed InfoNCE2d loss.
         """
         
         z_mix, z_out = F.normalize(z_mix, p=2, dim=1, eps=1e-6), F.normalize(z_out, p=2, dim=1, eps=1e-6)
-        A, A_labels, C, C_labels = self.construct_sets(z_mix, y_mix, z_out)
+        A, A_labels, C, C_labels = self.construct_sets(z_mix, y_mix, z_out, z_out_valid_mask)
         
         # (num_anchors, embed_dim) x (num_contrast, embed_dim) -> (num_anchors, num_contrast) 
         # cosine similarity matrix

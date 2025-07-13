@@ -94,11 +94,16 @@ def train(normalizing_flow: NormalizingFlow, cfg: CfgNode, device: torch.device)
             mixed_target = mixed_target.to(device)
             
             z_mix, z_mix_projected, z_mix_log_abs_det_jacobian = normalizing_flow(mixed_image_features)
+            NLL_loss = -normalizing_flow.log_density(z_mix, z_mix_log_abs_det_jacobian)[mixed_target == 0]
+            
             z_out, z_out_projected, z_out_log_abs_det_jacobian = normalizing_flow(padded_coco_features)
             
-            NLL_loss = -normalizing_flow.log_density(z_mix, z_mix_log_abs_det_jacobian)[mixed_target == 0]
+            batch_size, _, H, W = z_out_projected.shape
+            z_out_valid_mask = torch.zeros((batch_size, H, W), dtype=torch.bool, device=device)
+            for b, (H_original, W_original) in enumerate(coco_features_shape):
+                z_out_valid_mask[b, :H_original, :W_original] = 1
                                     
-            loss = cfg.NORMALIZING_FLOW.ALPHA * NLL_loss.mean() + contrastive_loss(z_mix_projected, mixed_target, z_out_projected)
+            loss = cfg.NORMALIZING_FLOW.ALPHA * NLL_loss.mean() + contrastive_loss(z_mix_projected, mixed_target, z_out_projected, z_out_valid_mask)
             
             optimizer.zero_grad()
             loss.backward()
