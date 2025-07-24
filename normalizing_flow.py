@@ -19,7 +19,7 @@ class Diffeomorphism(nn.Module, ABC):
 class ActNorm(Diffeomorphism):
     def __init__(self, num_features):
         super(ActNorm, self).__init__()
-        self.initialized = False
+        self.register_buffer("initialized", torch.tensor(False))
         self.bias = nn.Parameter(torch.zeros(1, num_features, 1, 1))
         self.log_scale = nn.Parameter(torch.zeros(1, num_features, 1, 1))
         
@@ -30,7 +30,7 @@ class ActNorm(Diffeomorphism):
             
             self.log_scale.data.copy_(torch.log(std + 1e-6))
             self.bias.data.copy_(mean)            
-        self.initialized = True
+        self.initialized.fill_(True)
     
     def forward(self, x):
         if not self.initialized and self.training:
@@ -89,9 +89,11 @@ class AffineCouplingLayer(Diffeomorphism):
         x1, x2 = x.chunk(2, dim=1)
         
         log_s1, b1 = self.subnet1(x1)
+        log_s1 = 3.0 * torch.tanh(log_s1)
         y1 = torch.exp(log_s1) * x2 + b1
         
         log_s2, b2 = self.subnet2(y1)
+        log_s2 = 3.0 * torch.tanh(log_s2)
         y2 = torch.exp(log_s2) * x1 + b2
         
         return torch.cat([y1, y2], dim=1), torch.sum(log_s1, dim=1) + torch.sum(log_s2, dim=1)

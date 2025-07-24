@@ -78,27 +78,48 @@ class CityscapesWithCocoDataset(Dataset):
                            coco_image: Image.Image, coco_annotations: List[dict]):
         """Creates a mixed image by pasting an anomalous instance from COCO image onto Cityscapes image."""
         
-        coco_annotation = np.random.choice(coco_annotations)
-        coco_instance_mask = self.coco_dataset.coco.annToMask(coco_annotation)
-
-        size = np.random.randint(self.random_rescale_lower, self.random_rescale_upper + 1)
-        factor = size / max(coco_instance_mask.shape)
+        cityscapes_image_np = np.array(cityscapes_image)
+        cityscapes_target_np = np.array(cityscapes_target)
+                
+        num_instances = 1
         
-        coco_image_tensor = torch.from_numpy(np.array(coco_image)).float().permute(2, 0, 1).unsqueeze(0)
-        coco_mask_tensor = torch.from_numpy(coco_instance_mask).unsqueeze(0).unsqueeze(0).float()
+        if len(coco_annotations) >= 3:
+            num_instances = 3
+        elif len(coco_annotations) == 2:
+            num_instances = 2
         
-        resized_image = F.interpolate(coco_image_tensor, scale_factor=factor, mode="bilinear", align_corners=False)
-        resized_mask = F.interpolate(coco_mask_tensor, scale_factor=factor, mode="nearest")
+        selected_annotations = np.random.choice(coco_annotations, size=num_instances, replace=False)
+        
+        for coco_annotation in selected_annotations:
+            coco_instance_mask = self.coco_dataset.coco.annToMask(coco_annotation)
+            
+            if coco_instance_mask.sum() < 100:  # Minimum 100 pixels
+                continue
 
-        resized_image_np = resized_image.squeeze(0).permute(1, 2, 0).clamp(0, 255).byte().numpy()
-        resized_mask_np = resized_mask.squeeze(0).squeeze(0).byte().numpy()
+            size = np.random.randint(self.random_rescale_lower, self.random_rescale_upper + 1)
+            factor = size / max(coco_instance_mask.shape)
+            
+            coco_image_tensor = torch.from_numpy(np.array(coco_image)).float().permute(2, 0, 1).unsqueeze(0)
+            coco_mask_tensor = torch.from_numpy(coco_instance_mask).unsqueeze(0).unsqueeze(0).float()
+            
+            resized_image = F.interpolate(coco_image_tensor, scale_factor=factor, mode="bilinear", align_corners=False)
+            resized_mask = F.interpolate(coco_mask_tensor, scale_factor=factor, mode="nearest")
 
-        return self.paste_anomalous_instance(
-            cityscapes_image=np.array(cityscapes_image),
-            cityscapes_target=np.array(cityscapes_target),
-            coco_image=resized_image_np,
-            coco_instance_mask=resized_mask_np
-        )
+            resized_image_np = resized_image.squeeze(0).permute(1, 2, 0).clamp(0, 255).byte().numpy()
+            resized_mask_np = resized_mask.squeeze(0).squeeze(0).byte().numpy()
+                        
+            cityscapes_image_pil, cityscapes_target_pil = self.paste_anomalous_instance(
+                cityscapes_image=cityscapes_image_np,
+                cityscapes_target=cityscapes_target_np,
+                coco_image=resized_image_np,
+                coco_instance_mask=resized_mask_np
+            )
+        
+            cityscapes_image_np = np.array(cityscapes_image_pil)
+            cityscapes_target_np = np.array(cityscapes_target_pil)
+        
+        return Image.fromarray(cityscapes_image_np), Image.fromarray(cityscapes_target_np)
+        
             
     def __getitem__(self, index):
         cityscapes_image, cityscapes_target = self.cityscapes_dataset[index]
@@ -116,71 +137,19 @@ class CityscapesWithCocoDataset(Dataset):
         
         if self.transform is not None:
             coco_image = self.transform(coco_image)
-            mixed_image = self.transform(mixed_image)       
+            mixed_image = self.transform(mixed_image)
         
         if self.target_transform is not None:
             mixed_target = self.target_transform(mixed_target)
             mixed_target = F.interpolate(mixed_target.unsqueeze(0).float(), 
                                          size=(mixed_image.shape[-2]//self.subsampling_factor, mixed_image.shape[-1]//self.subsampling_factor), 
-                                         mode="nearest")[0, 0].long()
+                                         mode="nearest")[0, 0].long()   
             
         return coco_image, mixed_image, mixed_target        
         
     def __len__(self):
         return len(self.cityscapes_dataset)
-
-
-class CityscapesWithCocoFeaturesDataset(Dataset):
-    def __init__(self, cfg: CfgNode, device: torch.device):
-        self.root = Path(cfg.SYSTEM.DINOV2_FEATURES_ROOT)
-        self.patch_size = cfg.BACKBONE.PATCH_SIZE
-        self.embed_dim = cfg.BACKBONE.EMBED_DIM
-        self.dataset = CityscapesWithCocoDataset(cfg)
-        
-        if self.root.exists():
-            print(f"DINOv2 per-patch features have already been generated. Skipping...")
-        else:
-            print(f"Cityscapes per-patch features have not been generated. Generating...")
-            print(f"Saving per-patch features to {self.root}")
-            self.root.mkdir(parents=True, exist_ok=True)
-            
-            dinov2 = torch.hub.load("facebookresearch/dinov2", cfg.BACKBONE.ARCHITECTURE).to(device=device)
-            dinov2.eval()
-            
-            dataloader = DataLoader(self.dataset, batch_size=1, shuffle=False)
-            with Progress() as progress:
-                task = progress.add_task(f"Processing CityscapesWithCocoDataset", total=len(self.dataset))
-                for i, (coco_image, mixed_image, mixed_target) in enumerate(dataloader):
-                    progress.update(task, advance=1, 
-                                    description=f"Generating per-patch features for CityscapesWithCocoDataset. Sample {i}/{len(self.dataset)}")
-                    
-                    _, _, H_mixed, W_mixed = mixed_image.shape
-                    _, _, H_coco, W_coco = coco_image.shape
-                    
-                    if not (H_mixed % self.patch_size == 0 and W_mixed % self.patch_size == 0 and
-                            H_coco % self.patch_size == 0 and W_coco % self.patch_size == 0):
-                        raise ValueError(f"Image dimensions {H_mixed}x{W_mixed} and {H_coco}x{W_coco} must be divisible by patch size {self.patch_size}.")
-                                        
-                    H_mixed //= self.patch_size
-                    W_mixed //= self.patch_size
-                    H_coco //= self.patch_size
-                    W_coco //= self.patch_size
-                    
-                    with torch.no_grad():
-                        coco_features = dinov2.forward_features(coco_image.to(device=device))["x_norm_patchtokens"]
-                        mixed_image_features = dinov2.forward_features(mixed_image.to(device=device))["x_norm_patchtokens"]
-                    
-                    torch.save({"features" : coco_features.view(-1, H_coco, W_coco, self.embed_dim).permute(0, 3, 1, 2).cpu().squeeze(), 
-                                "target" : mixed_target.cpu().squeeze()}, self.root / f"{Path(self.dataset.cityscapes_dataset.images[i]).stem}_coco.pth")
-                    
-                    torch.save({"features" : mixed_image_features.view(-1, H_mixed, W_mixed, self.embed_dim).permute(0, 3, 1, 2).cpu().squeeze(), 
-                                "target" : mixed_target.cpu().squeeze()}, self.root / f"{Path(self.dataset.cityscapes_dataset.images[i]).stem}.pth")
-
-    def __len__(self):
-        return len(self.dataset)
     
-    def __getitem__(self, index):
-        coco_features, target = torch.load(f"{self.root / Path(self.dataset.cityscapes_dataset.images[index]).stem}_coco.pth", map_location="cpu").values()
-        mixed_features, mixed_target = torch.load(f"{self.root / Path(self.dataset.cityscapes_dataset.images[index]).stem}.pth", map_location="cpu").values()
-        return coco_features, mixed_features, mixed_target
-        
+    @property
+    def name(self):
+        return "CityscapesWithCoco"

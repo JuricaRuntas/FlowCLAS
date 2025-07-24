@@ -9,8 +9,8 @@ _C.DATASETS = CN(new_allowed=True)
 
 # ---------------------------------------------------------------------------- #
 # System configuration
-_C.SYSTEM.NUM_WORKERS = 8
-_C.SYSTEM.SEED = 1337
+_C.SYSTEM.NUM_WORKERS = 16
+_C.SYSTEM.SEED = 666
 _C.SYSTEM.DINOV2_FEATURES_ROOT = "/workspace/dinov2_features"
 _C.SYSTEM.OUTPUT_DIR = "./flowclas_output_dir"
 # ---------------------------------------------------------------------------- #
@@ -26,7 +26,7 @@ _C.DATASETS.COCO.ANNOTATIONS = "/workspace/datasets/coco/annotations/instances_t
 _C.DATASETS.COCO.MIN_SIZE = 480 # only consider images with H >= MIN_SIZE AND W >= MIN_SIZE
 
 # OOD instances will be randomly rescaled before pasting on Cityscapes images
-_C.DATASETS.COCO.RANDOM_RESCALE_LOWER = 256
+_C.DATASETS.COCO.RANDOM_RESCALE_LOWER = 96
 _C.DATASETS.COCO.RANDOM_RESCALE_UPPER = 512
 
 # Cityscapes
@@ -65,7 +65,7 @@ _C.BACKBONE.NORM_STD = [0.229, 0.224, 0.225]
 # ---------------------------------------------------------------------------- #
 # Normalizing flow
 _C.NORMALIZING_FLOW = CN(new_allowed=True)
-_C.NORMALIZING_FLOW.NUM_STEPS = 16
+_C.NORMALIZING_FLOW.NUM_STEPS = 8
 _C.NORMALIZING_FLOW.PROJECTION_HEAD_DIM = 256
 _C.NORMALIZING_FLOW.NUM_FEATURES = _C.BACKBONE.EMBED_DIM
 _C.NORMALIZING_FLOW.TEMPERATURE = 0.1
@@ -73,9 +73,10 @@ _C.NORMALIZING_FLOW.NUM_EPOCHS = 600
 _C.NORMALIZING_FLOW.BATCH_SIZE = 32
 _C.NORMALIZING_FLOW.LR = 1e-5
 _C.NORMALIZING_FLOW.WEIGHT_DECAY = 1e-5
-_C.NORMALIZING_FLOW.WARMUP_EPOCHS = 60
-_C.NORMALIZING_FLOW.ALPHA = 0.1 # loss hyperparameter
-_C.NORMALIZING_FLOW.MAX_ANCHORS_PER_CLASS = 512
+_C.NORMALIZING_FLOW.WARMUP_EPOCHS = 10
+_C.NORMALIZING_FLOW.ALPHA = 0.07 # loss hyperparameter
+_C.NORMALIZING_FLOW.MAX_NORM = 5.0
+_C.NORMALIZING_FLOW.FEATURE_NOISE_STD = 0.01
 # ---------------------------------------------------------------------------- #
 
 
